@@ -12,3 +12,7 @@ test_*
 
 # locks
 *.lock
+
+# Datasets
+*.ts
+*.npy
