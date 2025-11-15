@@ -1,0 +1,10 @@
+.git/
+.vscode/
+*.lock
+__pycache__/
+.venv/
+.env/
+local_server/
+.dockerignore
+.gitignore
+README.md

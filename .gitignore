@@ -1,0 +1,14 @@
+__pycache__/
+
+# Virtual environment
+.venv
+.env
+
+# Credentials
+*.json
+
+# Test Files
+test_*
+
+# locks
+*.lock
