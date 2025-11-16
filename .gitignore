@@ -4,9 +4,6 @@ __pycache__/
 .venv
 .env
 
-# Credentials
-*.json
-
 # Test Files
 test_*
 
