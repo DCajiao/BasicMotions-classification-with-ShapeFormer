@@ -16,6 +16,7 @@ test_*
 # Datasets
 *.ts
 *.npy
+*.csv
 
 # Model results:
 summary/
