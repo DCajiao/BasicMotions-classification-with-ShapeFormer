@@ -17,7 +17,8 @@ COPY pyproject.toml ./
 # Install defined dependencies in pyproject.toml
 RUN uv pip install -r pyproject.toml --system
 
-# Copiar el resto del proyecto
-COPY ./src ./
-EXPOSE 5000
-CMD ["python", "main.py"]
+# Copy code base
+COPY ./streamlit_app/src ./
+
+EXPOSE 8501
+CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
