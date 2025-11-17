@@ -1,5 +1,5 @@
 # Imagen base oficial de Python
-FROM python:3.12-slim
+FROM python:3.12
 
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
