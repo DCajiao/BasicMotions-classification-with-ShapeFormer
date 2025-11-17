@@ -55,10 +55,10 @@ def load_model_exact(config_path, ckpt_path, shapelet_pkl, device, X_tensor=None
     _, ts_dim, len_ts = X_tensor.shape
 
     # Params
-    window_size = config.get("window_size", 100)
-    num_pip = config.get("num_pip", 0.2)
-    processes = config.get("processes", 64)
-    num_shapelet = config.get("num_shapelet", 3)
+    window_size = config.get("window_size")
+    num_pip = config.get("num_pip")
+    processes = config.get("processes")
+    num_shapelet = config.get("num_shapelet")
 
     # Shapelets
     sd = ShapeletDiscover(
@@ -71,9 +71,9 @@ def load_model_exact(config_path, ckpt_path, shapelet_pkl, device, X_tensor=None
     sd.load_shapelet_candidates(path=shapelet_pkl)
     shapelets_info = sd.get_shapelet_info(number_of_shapelet=num_shapelet)
 
-    sw = torch.tensor(shapelets_info[:, 3])
-    sw = torch.softmax(sw * 20, dim=0) * sw.shape[0]
-    shapelets_info[:, 3] = sw.numpy()
+    sw = torch.tensor(shapelets_info[:,3])
+    sw = torch.softmax(sw*20, dim=0) * sw.shape[0]
+    shapelets_info[:,3] = sw.numpy()
 
     shapelets = []
     for si in shapelets_info:
@@ -93,8 +93,11 @@ def load_model_exact(config_path, ckpt_path, shapelet_pkl, device, X_tensor=None
 
     ckpt = torch.load(ckpt_path, map_location=device)
     state = ckpt["state_dict"]
-    model.load_state_dict(state, strict=False)
+    missing, unexpected = model.load_state_dict(state, strict=False)
 
+    print("Pesos faltantes:", missing)
+    print("Pesos inesperados:", unexpected)
+    
     return model, config
 
 # ============================================================
@@ -136,13 +139,14 @@ if ts_file:
         # Load TS
         X_list, y_list = load_ts(ts_path)
         X = np.stack([x.T for x in X_list], axis=0)
-        X_tensor = torch.tensor(X, dtype=torch.float32).permute(0, 2, 1)
+        X_tensor = torch.from_numpy(X).float().to(device)
+        X_tensor = X_tensor.permute(0, 2, 1)
 
         model, config_loaded = load_model_exact(
             config_path,
             ckpt_path,
             shapelet_pkl,
-            torch.device(device),
+            device=device,
             X_tensor=X_tensor
         )
 
