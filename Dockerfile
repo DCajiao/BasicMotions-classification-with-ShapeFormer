@@ -18,7 +18,7 @@ COPY pyproject.toml ./
 RUN uv pip install -r pyproject.toml --system
 
 # Copy project source code (keeping the structure)
-COPY ./src ./
+COPY ./src/ ./
 
 EXPOSE 8501
 CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
