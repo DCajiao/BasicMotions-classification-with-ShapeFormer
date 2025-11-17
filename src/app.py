@@ -105,8 +105,25 @@ def load_model_exact(config_path, ckpt_path, shapelet_pkl, device, X_tensor=None
     # 6) Cargar pesos
     ckpt = torch.load(ckpt_path, map_location=device)
     state = ckpt["state_dict"]
-    missing, unexpected = model.load_state_dict(state, strict=False)
+    model_state = model.state_dict()
 
+    filtered_state = {} 
+
+    for k, v in state.items():
+        if k in model_state:
+            # Verificamos que el tamaño coincida
+            if model_state[k].shape == v.shape:
+                filtered_state[k] = v
+            else:
+                print(f"[IGNORED] Shape mismatch for {k}: ckpt={tuple(v.shape)}, model={tuple(model_state[k].shape)}")
+        else:
+            print(f"[IGNORED] Not found in model: {k}")
+
+    # Cargar SOLO los que coinciden
+    missing, unexpected = model.load_state_dict(filtered_state, strict=False)
+
+    print("\n=== CARGA FILTRADA ===")
+    print("Parámetros cargados correctamente:", len(filtered_state))
     print("Pesos faltantes:", missing)
     print("Pesos inesperados:", unexpected)
 
