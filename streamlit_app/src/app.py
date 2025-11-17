@@ -5,6 +5,7 @@ import json
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
+import os
 
 from Models.shapeformer import model_factory
 from Shapelet.mul_shapelet_discovery import ShapeletDiscover
@@ -109,9 +110,11 @@ ts_file = st.sidebar.file_uploader("TS File", type=["ts"])
 device = st.sidebar.selectbox("Device", ["cpu"])
 
 # Preloaded paths from your project
-DEFAULT_CONFIG = "config/configuration.json"
-DEFAULT_CKPT   = "config/BasicMotionsmodel_last.pth"
-DEFAULT_SHAP   = "config/BasicMotions_80.pkl"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+DEFAULT_CONFIG = os.path.join(BASE_DIR, "config/configuration.json")
+DEFAULT_CKPT   = os.path.join(BASE_DIR, "config/BasicMotionsmodel_last.pth")
+DEFAULT_SHAP   = os.path.join(BASE_DIR, "config/BasicMotions_80.pkl")
 st.sidebar.write("---")
 # ============================================================
 # --- 3. Processing when all four files exist -----
