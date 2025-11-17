@@ -16,7 +16,7 @@ COPY pyproject.toml ./
 RUN uv pip install . --system
 
 # Copy project source code (keeping the structure)
-COPY model_training/src/ /app/
+COPY src/ /app/
 
 EXPOSE 8501
 CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
