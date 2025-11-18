@@ -13,3 +13,4 @@ test_*
 
 # Model results:
 summary/
+temp_input.ts
