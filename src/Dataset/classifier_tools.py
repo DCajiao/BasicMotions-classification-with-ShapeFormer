@@ -10,18 +10,33 @@ __author__ = "Chang Wei Tan"
 
 def prepare_inputs_deep_learning(train_inputs, test_inputs, window_len=40, stride=20,
                                  val_size=1, random_state=1234, verbose=1):
-    # This function prepare the inputs to have the right shape for deep learning models.
-    # The shape we are after is (n_series, series_len, series_dim)
-    # Inputs are df with data and label columns
-    # Inputs:
-    #   train_inputs:   training dataset
-    #   test_inputs:    test dataset
-    #   window_len:     subsequence window size
-    #   stride:         stride
-    #   val_size:       number of series to be used as validation
-    #   random_state:   random seed
-    #   binary:         whether we convert to binary case
-    #   verbose:        verbosity
+    """
+    Prepare multivariate time series data for deep learning models by extracting sliding window subsequences.
+
+    The function splits the training data into training and validation series, extracts fixed-length 
+    overlapping subsequences from the original time series, and assigns the corresponding labels 
+    using majority voting within each window. It outputs data shaped as (n_samples, window_len, n_features) 
+    which is suitable for most neural network architectures.
+
+    Parameters:
+        train_inputs (object): An object with `data` and `label` attributes for the training set.
+        test_inputs (object): An object with `data` and `label` attributes for the test set.
+        window_len (int): Length of the sliding window for subsequence extraction. Default is 40.
+        stride (int): Step size between consecutive windows. Default is 20.
+        val_size (int): Number of time series to reserve for validation. Default is 1.
+        random_state (int): Seed for reproducibility in train/validation split. Default is 1234.
+        verbose (int): Verbosity level for logging. Default is 1.
+
+    Returns:
+        tuple:
+            - X_train (np.ndarray): Extracted training subsequences of shape (n_train_samples, window_len, n_features).
+            - y_train (np.ndarray): Corresponding training labels.
+            - X_val (np.ndarray or None): Extracted validation subsequences or None if not used.
+            - y_val (np.ndarray or None): Corresponding validation labels or None if not used.
+            - X_test (np.ndarray): Extracted test subsequences.
+            - y_test (np.ndarray): Corresponding test labels.
+    """
+
     if verbose > 0:
         print('[ClassifierTools] Preparing inputs')
 
@@ -84,9 +99,25 @@ def prepare_inputs_deep_learning(train_inputs, test_inputs, window_len=40, strid
 
 
 def extract_subsequences(X_data, y_data, window_size=30, stride=1, norm=False):
-    # This function extract subsequences from a long time series.
-    # Assumes that each timestamp has a label represented by y_data.
-    # The label for each subsequence is taken with the majority class in that segment.
+    """
+    Extract fixed-length overlapping subsequences from a multivariate time series.
+
+    For each subsequence window, the label is determined by the majority class (mode) 
+    among the labels within that window. Optionally applies z-normalization.
+
+    Parameters:
+        X_data (np.ndarray): Input time series of shape (timesteps, features).
+        y_data (np.ndarray): Sequence of labels per timestep of shape (timesteps,).
+        window_size (int): Length of each subsequence window. Default is 30.
+        stride (int): Step size between consecutive windows. Default is 1.
+        norm (bool): Whether to apply z-normalization to each subsequence. Default is False.
+
+    Returns:
+        tuple:
+            - subsequences (np.ndarray): Array of shape (n_subsequences, window_size, features).
+            - labels (np.ndarray): Array of shape (n_subsequences,) with majority labels per window.
+    """
+
     data_len, data_dim = X_data.shape
     subsequences = []
     labels = []
@@ -105,7 +136,3 @@ def extract_subsequences(X_data, y_data, window_size=30, stride=1, norm=False):
         labels.append(label)
         count += 1
     return np.array(subsequences), np.array(labels)
-
-
-
-

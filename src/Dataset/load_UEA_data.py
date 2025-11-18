@@ -12,13 +12,35 @@ logger = logging.getLogger(__name__)
 
 
 def load(config):
+    """
+    Load and preprocess multivariate time series data from the UEA archive format (.ts files).
+
+    If preprocessed `.npy` data exists, it is loaded. Otherwise, the function reads UEA .ts format files,
+    encodes labels, handles padding for variable-length time series, optionally normalizes the data,
+    and splits the dataset into training, validation, and test sets.
+
+    Parameters:
+        config (dict): Dictionary with keys:
+            - 'data_dir': str, path to the dataset folder.
+            - 'val_ratio': float, fraction of training data for validation.
+            - 'Norm': bool, whether to normalize the dataset.
+
+    Returns:
+        dict: A dictionary containing:
+            - 'train_data', 'train_label'
+            - 'val_data', 'val_label'
+            - 'test_data', 'test_label'
+            - 'All_train_data', 'All_train_label'
+            - 'max_len': int, maximum sequence length
+    """
     # Build data
     Data = {}
     problem = config['data_dir'].split('/')[-1]
 
     if os.path.exists(config['data_dir'] + '/' + problem + '.npy'):
         logger.info("Loading preprocessed data ...")
-        Data_npy = np.load(config['data_dir'] + '/' + problem + '.npy', allow_pickle=True)
+        Data_npy = np.load(config['data_dir'] + '/' +
+                           problem + '.npy', allow_pickle=True)
 
         Data['max_len'] = Data_npy.item().get('max_len')
         Data['All_train_data'] = Data_npy.item().get('All_train_data')
@@ -30,9 +52,12 @@ def load(config):
         Data['test_data'] = Data_npy.item().get('test_data')
         Data['test_label'] = Data_npy.item().get('test_label')
 
-        logger.info("{} samples will be used for training".format(len(Data['train_label'])))
-        logger.info("{} samples will be used for validation".format(len(Data['val_label'])))
-        logger.info("{} samples will be used for testing".format(len(Data['test_label'])))
+        logger.info("{} samples will be used for training".format(
+            len(Data['train_label'])))
+        logger.info("{} samples will be used for validation".format(
+            len(Data['val_label'])))
+        logger.info("{} samples will be used for testing".format(
+            len(Data['test_label'])))
 
     else:
         logger.info("Loading and preprocessing data ...")
@@ -55,8 +80,10 @@ def load(config):
 
         if config['Norm']:
             mean, std = mean_std(X_train)
-            mean = np.repeat(mean, max_seq_len).reshape(X_train.shape[1], max_seq_len)
-            std = np.repeat(std, max_seq_len).reshape(X_train.shape[1], max_seq_len)
+            mean = np.repeat(mean, max_seq_len).reshape(
+                X_train.shape[1], max_seq_len)
+            std = np.repeat(std, max_seq_len).reshape(
+                X_train.shape[1], max_seq_len)
             X_train = mean_std_transform(X_train, mean, std)
             X_test = mean_std_transform(X_test, mean, std)
 
@@ -65,12 +92,15 @@ def load(config):
         Data['All_train_label'] = y_train
 
         if config['val_ratio'] > 0:
-            train_data, train_label, val_data, val_label = split_dataset(X_train, y_train, config['val_ratio'])
+            train_data, train_label, val_data, val_label = split_dataset(
+                X_train, y_train, config['val_ratio'])
         else:
             val_data, val_label = [None, None]
 
-        logger.info("{} samples will be used for training".format(len(train_label)))
-        logger.info("{} samples will be used for validation".format(len(val_label)))
+        logger.info(
+            "{} samples will be used for training".format(len(train_label)))
+        logger.info(
+            "{} samples will be used for validation".format(len(val_label)))
         logger.info("{} samples will be used for testing".format(len(y_test)))
 
         Data['train_data'] = train_data
@@ -86,8 +116,24 @@ def load(config):
 
 
 def split_dataset(data, label, validation_ratio):
-    splitter = model_selection.StratifiedShuffleSplit(n_splits=1, test_size=validation_ratio, random_state=1234)
-    train_indices, val_indices = zip(*splitter.split(X=np.zeros(len(label)), y=label))
+    """
+    Stratified train/validation split for time series classification.
+
+    Ensures that the label distribution is preserved in both sets.
+
+    Parameters:
+        data (np.ndarray): Full dataset array of shape (n_samples, n_channels, seq_len).
+        label (np.ndarray): Array of integer-encoded labels.
+        validation_ratio (float): Proportion of data to use for validation.
+
+    Returns:
+        tuple: (train_data, train_label, val_data, val_label)
+    """
+
+    splitter = model_selection.StratifiedShuffleSplit(
+        n_splits=1, test_size=validation_ratio, random_state=1234)
+    train_indices, val_indices = zip(
+        *splitter.split(X=np.zeros(len(label)), y=label))
     train_data = data[train_indices]
     train_label = label[train_indices]
     val_data = data[val_indices]
@@ -96,6 +142,24 @@ def split_dataset(data, label, validation_ratio):
 
 
 def fill_missing(x: np.array, max_len: int, vary_len: str = "suffix-noise", normalise: bool = True):
+    """
+    Fill missing or shorter subsequences in time series with appropriate padding or scaling.
+
+    Depending on `vary_len`, uses different strategies for padding:
+        - "zero": replace NaNs with zeros.
+        - "prefix-suffix-noise": pad both ends with small random noise.
+        - "uniform-scaling": stretch original sequence uniformly.
+        - default: replace NaNs with random noise.
+
+    Parameters:
+        x (np.ndarray): Input 2D array of shape (n_instances, sequence_length) with possible NaNs.
+        max_len (int): Target length for sequences.
+        vary_len (str): Padding method. One of ["zero", "prefix-suffix-noise", "uniform-scaling"].
+        normalise (bool): Whether to apply z-normalization after filling.
+
+    Returns:
+        np.ndarray: Array with completed sequences of shape (n_instances, max_len).
+    """
     if vary_len == "zero":
         if normalise:
             x = StandardScaler().fit_transform(x)
@@ -154,11 +218,20 @@ def fill_missing(x: np.array, max_len: int, vary_len: str = "suffix-noise", norm
 
 def process_ts_data(x, max_len, vary_len: str = "suffix-noise", normalise: bool = False):
     """
-    This is a function to process the data, i.e. convert dataframe to numpy array
-    :param X:
-    :param normalise:
-    :return:
+    Convert sktime-style pandas DataFrame of multivariate time series into a 3D NumPy array.
+
+    Each time series is reshaped into fixed-length format and padded using `fill_missing`.
+
+    Parameters:
+        x (pd.DataFrame): Input DataFrame with shape (n_instances, n_dimensions), where each cell contains a pd.Series.
+        max_len (int): Target fixed sequence length.
+        vary_len (str): Padding strategy for variable-length sequences.
+        normalise (bool): Whether to normalize each sequence.
+
+    Returns:
+        np.ndarray: 3D array of shape (n_instances, n_dimensions, max_len)
     """
+
     num_instances, num_dim = x.shape
     columns = x.columns
     # max_len = np.max([len(X[columns[0]][i]) for i in range(num_instances)])
@@ -168,11 +241,24 @@ def process_ts_data(x, max_len, vary_len: str = "suffix-noise", normalise: bool 
             lengths = len(x[columns[i]][j].values)
             end = min(lengths, max_len)
             output[j, i, :end] = x[columns[i]][j].values
-        output[:, i, :] = fill_missing(output[:, i, :], max_len, vary_len, normalise)
+        output[:, i, :] = fill_missing(
+            output[:, i, :], max_len, vary_len, normalise)
     return output
 
 
 def mean_std(train_data):
+    """
+    Compute mean and standard deviation across time steps for normalization.
+
+    Parameters:
+        train_data (np.ndarray): Time series data of shape (n_samples, n_channels, seq_len).
+
+    Returns:
+        tuple:
+            - mean (np.ndarray): Mean per channel.
+            - std (np.ndarray): Max standard deviation per channel.
+    """
+
     m_len = np.mean(train_data, axis=2)
     mean = np.mean(m_len, axis=0)
 
@@ -183,4 +269,16 @@ def mean_std(train_data):
 
 
 def mean_std_transform(train_data, mean, std):
+    """
+    Apply normalization using precomputed mean and standard deviation.
+
+    Parameters:
+        train_data (np.ndarray): Input data of shape (n_samples, n_channels, seq_len).
+        mean (np.ndarray): Mean per channel.
+        std (np.ndarray): Std per channel.
+
+    Returns:
+        np.ndarray: Normalized data.
+    """
+
     return (train_data - mean) / std
