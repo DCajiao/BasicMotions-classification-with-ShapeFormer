@@ -2,12 +2,9 @@ import argparse
 import torch
 import numpy as np
 import json
-import pickle
 from Models.shapeformer import model_factory
 from Shapelet.mul_shapelet_discovery import ShapeletDiscover
 
-# ============================================================
-# 1. LEER ARCHIVO .TS
 # ============================================================
 
 def load_ts(ts_path):
@@ -43,32 +40,28 @@ def load_ts(ts_path):
     return X_list, y_list
 
 
-# ============================================================
-# 2. CARGAR MODELO COMPLETO
-# ============================================================
-
 def load_model_exact(config_path, ckpt_path, shapelet_pkl, device, X_tensor=None):
-    print("\n=== Reconstruyendo ShapeFormer EXACTO ===")
+    print("\n=== Reconstructing EXACT ShapeFormer ===")
 
-    # 1) Cargar config
+    # 1) Load config
     with open(config_path, "r") as f:
         config = json.load(f)
 
-    # 2) Reconstruir forma de entrada desde el propio tensor test
-    #    X_tensor llega con shape (N, C, T)
+    # 2) Reconstruct input shape from the test tensor itself
+    #    X_tensor comes with shape (N, C, T)
     if X_tensor is None:
-        raise ValueError("Debes pasar X_tensor a load_model_exact()")
+        raise ValueError("You must pass X_tensor to load_model_exact()")
 
     _, ts_dim, len_ts = X_tensor.shape
-    print(f"Reconstruido: ts_dim={ts_dim}, len_ts={len_ts}")
+    print(f"Reconstructed: ts_dim={ts_dim}, len_ts={len_ts}")
 
-    # 3) Parámetros importantes
+    # 3) Important parameters
     window_size = config.get("window_size", 100)
     num_pip = config.get("num_pip", 0.2)
     processes = config.get("processes", 64)
     num_shapelet = config.get("num_shapelet", 3)
 
-    # 4) ShapeletDiscover solo para cargar el PKL
+    # 4) ShapeletDiscover only to load the PKL
     sd = ShapeletDiscover(
         window_size=window_size,
         num_pip=num_pip,
@@ -79,12 +72,12 @@ def load_model_exact(config_path, ckpt_path, shapelet_pkl, device, X_tensor=None
     sd.load_shapelet_candidates(path=shapelet_pkl)
     shapelets_info = sd.get_shapelet_info(number_of_shapelet=num_shapelet)
 
-    # Reescalar pesos IG como en main.py
+    # Rescale IG weights as in main.py
     sw = torch.tensor(shapelets_info[:,3])
     sw = torch.softmax(sw*20, dim=0) * sw.shape[0]
     shapelets_info[:,3] = sw.numpy()
 
-    # Shapelets dummy según sus longitudes
+    # Dummy shapelets according to their lengths
     shapelets = []
     for si in shapelets_info:
         start = int(si[1])
@@ -92,34 +85,29 @@ def load_model_exact(config_path, ckpt_path, shapelet_pkl, device, X_tensor=None
         length = max(end - start, 1)
         shapelets.append(np.zeros(length, dtype=np.float32))
 
-    # Insertamos en config
+    # Insert into config
     config["shapelets_info"] = shapelets_info
     config["shapelets"] = shapelets
     config["len_ts"] = len_ts
     config["ts_dim"] = ts_dim
 
-    # Número de clases real
-    config["num_labels"] = 4     # BasicMotions tiene 4 clases
+    # Actual number of classes
+    config["num_labels"] = 4     # BasicMotions has 4 classes
     config["Data_shape"] = (1, ts_dim, len_ts)
 
-    # 5) Crear modelo vacío
+    # 5) Create empty model
     model = model_factory(config).to(device)
 
-    # 6) Cargar pesos
+    # 6) Load weights
     ckpt = torch.load(ckpt_path, map_location=device)
     state = ckpt["state_dict"]
     missing, unexpected = model.load_state_dict(state, strict=False)
 
-    print("Pesos faltantes:", missing)
-    print("Pesos inesperados:", unexpected)
+    print("Missing weights:", missing)
+    print("Unexpected weights:", unexpected)
 
     return model
 
-
-
-# ============================================================
-# 3. INFERENCIA
-# ============================================================
 
 def run_inference(ts_path, ckpt_path, shapelet_pkl, config_path, device="cpu"):
     device = torch.device(device)
@@ -130,7 +118,7 @@ def run_inference(ts_path, ckpt_path, shapelet_pkl, config_path, device="cpu"):
     X_tensor = torch.from_numpy(X).float().to(device)
     X_tensor = X_tensor.permute(0, 2, 1)         # (N, C, T)
 
-    print("Entrada a modelo =", X_tensor.shape)
+    print("Input to model =", X_tensor.shape)
 
     model = load_model_exact(
     config_path, ckpt_path, shapelet_pkl,
@@ -142,13 +130,13 @@ def run_inference(ts_path, ckpt_path, shapelet_pkl, config_path, device="cpu"):
         logits = model(X_tensor, ep=0)
         preds = torch.argmax(logits, dim=1).cpu().numpy()
 
-    # Mapear etiquetas reales
+    # Map real labels
     unique_labels = sorted(set(y_list))
     label2idx = {lab: i for i, lab in enumerate(unique_labels)}
     y_true = np.array([label2idx[y] for y in y_list])
 
     acc = (preds == y_true).mean() * 100
-    print(f"\nAccuracy TEST: {acc:.2f}%")
+    print(f"\nTEST Accuracy: {acc:.2f}%")
 
     for i in range(len(preds)):
         print(f"{i}: true={y_list[i]} pred={unique_labels[preds[i]]}")
