@@ -8,6 +8,21 @@ from Shapelet.mul_shapelet_discovery import ShapeletDiscover
 # ============================================================
 
 def load_ts(ts_path):
+    """
+    Loads a multivariate time series dataset from a `.ts` file (UEA/UCR format).
+
+    Parses each time series instance and its label, supporting multiple dimensions.
+    Only processes lines after the `@data` tag, which marks the start of the actual time series data.
+
+    Args:
+        ts_path (str): Path to the `.ts` file containing the dataset.
+
+    Returns:
+        tuple:
+            - List[np.ndarray]: A list of multivariate time series with shape (C, T) each.
+            - List[str]: A list of corresponding labels for each time series.
+    """
+
     X_list = []
     y_list = []
     in_data = False
@@ -41,6 +56,31 @@ def load_ts(ts_path):
 
 
 def load_model_exact(config_path, ckpt_path, shapelet_pkl, device, X_tensor=None):
+    """
+    Reconstructs a ShapeFormer model from configuration and checkpoint, using provided shapelets.
+
+    Performs the following steps:
+    1. Loads the model configuration from JSON.
+    2. Infers time series input shape from `X_tensor`.
+    3. Loads shapelet definitions from a pickle file.
+    4. Applies softmax-based rescaling of importance weights.
+    5. Inserts shapelet information into config.
+    6. Initializes the ShapeFormer architecture and loads available weights.
+
+    Args:
+        config_path (str): Path to the JSON config file.
+        ckpt_path (str): Path to the model checkpoint (.pth).
+        shapelet_pkl (str): Path to pickled shapelet metadata.
+        device (str): Torch device to load model on (e.g., 'cpu' or 'cuda').
+        X_tensor (torch.Tensor): Input tensor of shape (N, C, T) to infer dimensions.
+
+    Returns:
+        torch.nn.Module: Instantiated and partially weight-loaded ShapeFormer model.
+
+    Raises:
+        ValueError: If `X_tensor` is not provided to extract dimensions.
+    """
+
     print("\n=== Reconstructing EXACT ShapeFormer ===")
 
     # 1) Load config
@@ -110,6 +150,25 @@ def load_model_exact(config_path, ckpt_path, shapelet_pkl, device, X_tensor=None
 
 
 def run_inference(ts_path, ckpt_path, shapelet_pkl, config_path, device="cpu"):
+    """
+    Runs classification inference on a time series dataset using ShapeFormer.
+
+    Handles preprocessing, model reconstruction, forward pass, and metric reporting.
+
+    Steps include:
+    - Loading and formatting the time series.
+    - Rebuilding the model with loaded shapelets and weights.
+    - Predicting class labels and computing accuracy.
+    - Printing the prediction results per instance.
+
+    Args:
+        ts_path (str): Path to the test `.ts` dataset.
+        ckpt_path (str): Path to the model checkpoint (.pth).
+        shapelet_pkl (str): Path to shapelet definitions (pickle file).
+        config_path (str): Path to model config (JSON).
+        device (str): Device identifier for inference (default: "cpu").
+    """
+
     device = torch.device(device)
 
     X_list, y_list = load_ts(ts_path)
@@ -144,6 +203,15 @@ def run_inference(ts_path, ckpt_path, shapelet_pkl, config_path, device="cpu"):
 
 # ============================================================
 def main():
+    """
+    Command-line entry point for time series inference using ShapeFormer.
+
+    Parses CLI arguments for test file, model checkpoint, shapelet data, and config.
+    Delegates to `run_inference()` with provided arguments.
+
+    Expected usage:
+        python infer_shapeformer.py --ts_path PATH --checkpoint PATH --shapelet_pkl PATH --config PATH [--device cpu|cuda]
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--ts_path", required=True)
     parser.add_argument("--checkpoint", required=True)
