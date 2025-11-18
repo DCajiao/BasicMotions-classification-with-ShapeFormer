@@ -16,10 +16,16 @@ logger = logging.getLogger(__name__)
 
 def Setup(args):
     """
-        Input:
-            args: arguments object from argparse
-        Returns:
-            config: configuration dictionary
+    Initializes and prepares the experiment directory structure.
+
+    Creates output subdirectories for model checkpoints, predictions, and TensorBoard summaries.
+    Also saves a configuration file (`configuration.json`) for reproducibility.
+
+    Args:
+        args (argparse.Namespace): Parsed command-line arguments.
+
+    Returns:
+        dict: A configuration dictionary including derived paths and parameters.
     """
     config = args.__dict__  # configuration dictionary
     # Create output directory
@@ -46,10 +52,13 @@ def Setup(args):
 
 def create_dirs(dirs):
     """
-    Input:
-        dirs: a list of directories to create, in case these directories are not found
+    Creates a list of directories if they do not already exist.
+
+    Args:
+        dirs (list of str): List of directory paths to create.
+
     Returns:
-        exit_code: 0 if success, -1 if failure
+        int: 0 if directories created successfully, exits with error otherwise.
     """
     try:
         for dir_ in dirs:
@@ -62,6 +71,18 @@ def create_dirs(dirs):
 
 
 def Initialization(config):
+    """
+    Initializes training environment by setting seeds and selecting device.
+
+    Sets the random seed if specified, and determines whether to use CPU or GPU.
+
+    Args:
+        config (dict): Configuration dictionary with keys like 'seed' and 'gpu'.
+
+    Returns:
+        torch.device: The selected computation device (CPU or CUDA).
+    """
+
     if config['seed'] is not None:
         torch.manual_seed(config['seed'])
     device = torch.device('cuda' if (torch.cuda.is_available() and config['gpu'] != '-1') else 'cpu')
@@ -72,6 +93,18 @@ def Initialization(config):
 
 
 def Data_Loader(config):
+    """
+    Loads dataset according to the specified configuration.
+
+    Automatically selects the appropriate loading function depending on whether the
+    dataset is segmented (e.g., HAR) or UEA-style (.ts format).
+
+    Args:
+        config (dict): Configuration containing 'data_dir'.
+
+    Returns:
+        tuple: A dataset object (features, labels, metadata, etc.) ready for use.
+    """
     if config['data_dir'].split('/')[1] == 'Segmentation':
         Data = load_segment_data.load(config)  # Load HAR (WISDM V2) and Ford Datasets
     else:
@@ -80,6 +113,15 @@ def Data_Loader(config):
 
 
 def Data_Verifier(config):
+    """
+    Verifies whether the dataset is already downloaded and unzipped.
+
+    Creates the data directory if missing. For UEA datasets, downloads and extracts
+    data from an external archive if not found locally.
+
+    Args:
+        config (dict): Configuration dictionary containing 'data_path'.
+    """
 
     if not os.path.exists(config['data_path']):
         os.makedirs(os.path.join(os.getcwd(), config['data_path']))
@@ -97,6 +139,17 @@ def Data_Verifier(config):
 
 
 def Downloader(file_url, problem):
+    """
+    Downloads and extracts a dataset zip archive from a given URL.
+
+    Tracks and logs the download progress, extracts its contents,
+    and removes the original ZIP file after extraction.
+
+    Args:
+        file_url (str): URL to download the ZIP file from.
+        problem (str): Subdirectory name under 'Dataset/' where data will be saved.
+    """
+
     # Define the path to download
     path_to_download = os.path.join('Dataset/', problem)
     # Send a GET request to download the file
@@ -136,6 +189,20 @@ def Downloader(file_url, problem):
 
 
 class dataset_class(Dataset):
+    """
+    Custom PyTorch Dataset for loading time series data and labels.
+
+    Wraps the input features and labels as tensors and allows indexing
+    for use in DataLoader pipelines.
+
+    Args:
+        data (np.ndarray): Time series features (num_samples x num_dims x num_timesteps).
+        label (np.ndarray): Corresponding class labels (num_samples,).
+
+    Methods:
+        __getitem__(ind): Returns a tuple (data_tensor, label_tensor, index).
+        __len__(): Returns the total number of samples in the dataset.
+    """
 
     def __init__(self, data, label):
         super(dataset_class, self).__init__()
