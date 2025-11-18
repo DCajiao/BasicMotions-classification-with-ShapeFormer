@@ -1,7 +1,7 @@
 [project]
 name = "shapeformer-project"
 version = "0.1.0"
-description = "Add your description here"
+description = "Project for classifying multivariate time series using ShapeFormer, integrating shapelets and deep learning for tasks such as BasicMotions, with interactive visualization using Streamlit."
 readme = "README.md"
 requires-python = "==3.12"
 dependencies = [
