@@ -1,9 +1,38 @@
 def find_c_shapelet(list_ppi, c):
+    """
+    Selects the top `c` shapelets based on highest information gain (IG).
+
+    Args:
+        list_ppi (np.ndarray): Array of shapelet candidates where the 4th column (index 3) contains IG values.
+        c (int): Number of top shapelets to select.
+
+    Returns:
+        np.ndarray: The top `c` shapelets sorted in descending order of IG.
+    """
+
     sort_list_ppi = list_ppi[list_ppi[:, 3].argsort()]
     return sort_list_ppi[-c:]
 
 
 def find_c_shapelet_non_overlab(list_ppi, c, p=0.1, p_inner=0.1, len_ts=100):
+    """
+    Selects the top `c` shapelets while avoiding significant overlaps within the same dimension.
+
+    Implements a greedy algorithm to select high-IG shapelets that are sufficiently distinct,
+    based on temporal overlap thresholds (outer and inner penalties) and dimension matching.
+
+    Args:
+        list_ppi (np.ndarray): Array of shapelet candidates where each row contains metadata 
+                            [pos, start, end, IG, label, dim].
+        c (int): Number of shapelets to select.
+        p (float): Outer overlap penalty threshold (default: 0.1).
+        p_inner (float): Inner containment penalty threshold (default: 0.1).
+        len_ts (int): Length of the full time series (default: 100).
+
+    Returns:
+        list: List of `c` selected shapelet candidates with minimal intra-dimensional overlap.
+    """
+
     sort_list_ppi = list_ppi[list_ppi[:, 3].argsort()]
     list_group_shapelet = [sort_list_ppi[-1]]
     list_pos = [len(sort_list_ppi)-1]
