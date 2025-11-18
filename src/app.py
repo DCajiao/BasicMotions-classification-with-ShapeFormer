@@ -161,7 +161,7 @@ DEFAULT_SHAP = os.path.join(BASE_DIR, "store/BasicMotions_80.pkl")
 st.sidebar.write("---")
 
 if ts_file:
-    if st.button("🚀 Run Inference"):
+    if st.button("-> Run Inference"):
         st.write("Loading data...")
 
         # Save temporary files
