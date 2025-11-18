@@ -10,8 +10,3 @@ python main.py --dataset_pos=1 --num_shapelet=10 --window_size=80 --pre_shapelet
 ```python
 python infer_shapeformer.py --ts_path "Dataset/UEA/Multivariate_ts/BasicMotions/BasicMotions_TEST.ts" --checkpoint "Results/Dataset/UEA/2025-11-16_12-02/checkpoints/BasicMotionsmodel_last.pth" --shapelet_pkl "store/BasicMotions_80.pkl" --config "Results/Dataset/UEA/2025-11-16_12-02/configuration.json" --device cpu
 ```
-
-3. Inference with synthetic data (UNOFFICIAL TEST)
-```python
-python infer_shapeformer.py --ts_path "Dataset/UEA/Multivariate_ts/BasicMotions/SyntheticBasicMotions_TEST.ts" --checkpoint "Results/Dataset/UEA/2025-11-16_12-02/checkpoints/BasicMotionsmodel_last.pth" --shapelet_pkl "store/BasicMotions_80.pkl" --config "Results/Dataset/UEA/2025-11-16_12-02/configuration.json" --device cpu
-```

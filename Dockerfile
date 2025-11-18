@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# UV INSTALLATION
+# Uv Installation
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && mv /root/.local/bin/uv /usr/local/bin/uv \
     && mv /root/.local/bin/uvx /usr/local/bin/uvx
@@ -16,7 +16,6 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
 COPY pyproject.toml ./
 
 # Install dependencies from pyproject
-# RUN uv pip install -r pyproject.toml --system
 RUN uv pip compile pyproject.toml -o requirements.txt \
     && uv pip install --system -r requirements.txt
 
