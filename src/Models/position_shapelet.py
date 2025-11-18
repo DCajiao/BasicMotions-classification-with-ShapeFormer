@@ -8,13 +8,29 @@ import torch.nn.functional as F
 Perceptually and Position-aware Learning TS Shapelets
 ------------------------------------------------------------------------------------------------------------------------
 """
+
+
 class PISDistBlock(nn.Module):
     """
-    Parameter:
-    shaplet:
-    shaplet_info:
-    in_chanels: input
+    Position-aware and Perceptually-informed Shapelet Distance Block.
+
+    This module computes a shapelet-based distance from a specific region 
+    of a multivariate time series. It enhances classical shapelet matching 
+    by including a complexity-invariant correction and soft-minimum pooling 
+    for differentiability.
+
+    Args:
+        shapelet (list[float]): The raw shapelet values.
+        shapelet_info (list or array): Metadata about the shapelet, including 
+            dimension, start/end indices, etc.
+        len_ts (int): Total length of the time series.
+        alpha (float): Soft-minimum sharpness factor.
+        window_size (int): Window size for allowed positional tolerance.
+        norm (float): Normalization factor for complexity invariance.
+        bounding_norm (float): Upper bound to stabilize soft-minimum computation.
+        maximum_ci (float): Maximum complexity-invariant correction factor allowed.
     """
+
     def __init__(self, shapelet, shapelet_info=None, len_ts=5, alpha=-10,
                  window_size=10, norm=10, bounding_norm=100, maximum_ci=3):
         super(PISDistBlock, self).__init__()
@@ -23,7 +39,8 @@ class PISDistBlock(nn.Module):
         self.len_ts = len_ts
         self.window_size = window_size
         self.bounding_norm = bounding_norm
-        self.max_norm_dist = nn.Parameter(torch.tensor(0.00001), requires_grad=False)
+        self.max_norm_dist = nn.Parameter(
+            torch.tensor(0.00001), requires_grad=False)
         self.maximum_ci = maximum_ci
         if len(shapelet_info) == 6:
             self.dim = int(shapelet_info[5])
@@ -36,16 +53,29 @@ class PISDistBlock(nn.Module):
         self.end_position = self.end_position if self.end_position < len_ts else len_ts
 
         sc = torch.FloatTensor(shapelet)
-        self.shapelet = nn.Parameter(sc.view(1,sc.size(-1)), requires_grad=True)
+        self.shapelet = nn.Parameter(
+            sc.view(1, sc.size(-1)), requires_grad=True)
         self.kernel_size = self.shapelet.size(-1)
-        self.out_channels = self.end_position - self.start_position - self.shapelet.size(-1) + 1
+        self.out_channels = self.end_position - \
+            self.start_position - self.shapelet.size(-1) + 1
 
     def forward(self, x, ep):
-        self.ci_shapelet = torch.sum(torch.square(torch.subtract(self.shapelet.data.detach()[:,1:],
-                                                                 self.shapelet.data.detach()[:,:-1]))) + (1/self.norm)
+        """
+        Computes the shapelet-based distance with complexity and positional awareness.
 
-        pis = x[:,self.dim,self.start_position:self.end_position]
-        ci_pis = torch.square(torch.subtract(pis[:,1:], pis[:,:-1]))
+        Args:
+            x (Tensor): Input time series of shape (batch_size, channels, length).
+            ep (int): Current training epoch (used for adaptive normalization).
+
+        Returns:
+            Tensor: Shapelet response of shape (batch_size, 1).
+        """
+
+        self.ci_shapelet = torch.sum(torch.square(torch.subtract(self.shapelet.data.detach()[:, 1:],
+                                                                 self.shapelet.data.detach()[:, :-1]))) + (1/self.norm)
+
+        pis = x[:, self.dim, self.start_position:self.end_position]
+        ci_pis = torch.square(torch.subtract(pis[:, 1:], pis[:, :-1]))
 
         pis = pis.unfold(1, self.kernel_size, 1).contiguous()
         pis = pis.view(-1, self.kernel_size)
@@ -59,7 +89,7 @@ class PISDistBlock(nn.Module):
         min_ci = torch.min(ci_pis, ci_shapelet_vec)
         ci_dist = max_ci / min_ci
         ci_dist[ci_dist > self.maximum_ci] = self.maximum_ci
-        dist1 = torch.sum(torch.square(pis - self.shapelet),1)
+        dist1 = torch.sum(torch.square(pis - self.shapelet), 1)
         dist1 = dist1 * ci_dist
         dist1 = dist1 / self.shapelet.size(-1)
         dist1 = dist1.view(x.size(0), 1, self.out_channels)
@@ -76,6 +106,15 @@ class PISDistBlock(nn.Module):
         return dist1
 
     def soft_minimum(self, dist):
+        """
+        Applies a soft-minimum operation over the sliding window distances.
+
+        Args:
+            dist (Tensor): Distance tensor of shape (batch_size, 1, out_channels).
+
+        Returns:
+            Tensor: Soft-minimum scalar per instance.
+        """
         dist1 = dist / self.bounding_norm
         temp = torch.exp(self.alpha * dist1)
         min_dist = torch.sum(temp*dist1, 2)/torch.sum(temp, 2)
@@ -83,39 +122,108 @@ class PISDistBlock(nn.Module):
         return min_dist
 
     def get_shapelets(self):
+        """
+        Returns the learned shapelet tensor.
+
+        Returns:
+            Tensor: Shapelet tensor of shape (1, shapelet_length).
+        """
+
         return self.shapelet
 
 
 class PShapeletLayer(nn.Module):
-    def __init__(self, shapelets_info, shapelets , len_ts, window_size=20, bounding_norm=100):
+    """
+    A layer composed of multiple perceptual and position-aware shapelet blocks.
+
+    This layer aggregates the responses of all learned shapelets, allowing
+    rich and localized representation of discriminative patterns.
+
+    Args:
+        shapelets_info (array-like): Metadata for each shapelet.
+        shapelets (list of list[float]): List of raw shapelet values.
+        len_ts (int): Time series length.
+        window_size (int): Tolerance window for positional encoding.
+        bounding_norm (float): Upper bound for soft-minimum normalization.
+    """
+
+    def __init__(self, shapelets_info, shapelets, len_ts, window_size=20, bounding_norm=100):
         super(PShapeletLayer, self).__init__()
         self.blocks = nn.ModuleList([
-            PISDistBlock(shapelet=shapelets[i],shapelet_info=shapelets_info[i],len_ts=len_ts,window_size=window_size,
+            PISDistBlock(shapelet=shapelets[i], shapelet_info=shapelets_info[i], len_ts=len_ts, window_size=window_size,
                          bounding_norm=bounding_norm).requires_grad_(True)
             for i in range(len(shapelets))])
 
     def transform_to_complexity_invariance(self, x):
+        """
+        Converts raw input into a complexity-invariant version by
+        applying squared temporal gradients.
+
+        Args:
+            x (Tensor): Input tensor of shape (batch_size, channels, length).
+
+        Returns:
+            Tensor: Transformed tensor of shape (batch_size, channels, length-1).
+        """
+
         return torch.square(torch.subtract(x[:, :, 1:], x[:, :, :-1]))
 
     def forward(self, x, ep):
+        """
+        Computes the concatenated shapelet responses for all blocks.
+
+        Args:
+            x (Tensor): Input time series tensor.
+            ep (int): Current epoch (for internal normalization updates).
+
+        Returns:
+            Tensor: Output shapelet activations of shape (batch_size, 1, num_shapelets).
+        """
+
         out = torch.FloatTensor([]).to(x.device)
         for block in self.blocks:
-            out = torch.cat((out, block(x,ep=ep)), dim=1)
+            out = torch.cat((out, block(x, ep=ep)), dim=1)
 
-        return out.view(out.size(0),1,out.size(1))
+        return out.view(out.size(0), 1, out.size(1))
 
 
 class PPSN(nn.Module):
-    def __init__(self, shapelets_info, shapelets , len_ts, num_classes, sge=0, window_size=20, bounding_norm=100):
+    """
+    Perceptual and Position-aware Shapelet Network (PPSN).
+
+    A classification head built on top of shapelet responses. During early 
+    training, optionally uses feature detachment to delay gradient flow.
+
+    Args:
+        shapelets_info (array-like): Metadata per shapelet.
+        shapelets (list): List of shapelet vectors.
+        len_ts (int): Length of input time series.
+        num_classes (int): Number of output classes.
+        sge (int): Epoch threshold for gradient detachment.
+        window_size (int): Window of tolerance for positional matching.
+        bounding_norm (float): Norm constant for soft-min computation.
+    """
+
+    def __init__(self, shapelets_info, shapelets, len_ts, num_classes, sge=0, window_size=20, bounding_norm=100):
         super(PPSN, self).__init__()
         self.sge = sge
-        self.pshapelet_layer = PShapeletLayer(shapelets_info=shapelets_info, shapelets=shapelets,len_ts=len_ts,
-                                              window_size=window_size,bounding_norm=bounding_norm)
+        self.pshapelet_layer = PShapeletLayer(shapelets_info=shapelets_info, shapelets=shapelets, len_ts=len_ts,
+                                              window_size=window_size, bounding_norm=bounding_norm)
         self.num_shapelets = len(shapelets)
         self.linear3 = nn.Linear(self.num_shapelets, num_classes)
 
     def forward(self, x, ep):
-        y = self.pshapelet_layer(x,ep)
+        """
+        Applies the PPSN model on input data.
+
+        Args:
+            x (Tensor): Input tensor of shape (batch_size, channels, length).
+            ep (int): Current training epoch.
+
+        Returns:
+            Tensor: Logits of shape (batch_size, num_classes).
+        """
+        y = self.pshapelet_layer(x, ep)
         y = torch.relu(y)
         if ep < self.sge:
             y = self.linear3(y.detach())
@@ -128,12 +236,15 @@ class PPSN(nn.Module):
 if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # time_series = torch.Tensor([[[1., 2., 3., 4., 5.],[1., 1., 1., 1., 1.]], [[-4., -5., -6., -7., -8.],[-2., -2., -2., -2., -2.]]]).view(2,2,5)
-    time_series = torch.Tensor([[1., 2., 3., 4., 5., 6., 7., 4., 5.], [-2., -2., -2., -2., -3., 4., 5., 4., 5.]]).view(2,1,9)
+    time_series = torch.Tensor([[1., 2., 3., 4., 5., 6., 7., 4., 5.],
+                               [-2., -2., -2., -2., -3., 4., 5., 4., 5.]]).view(2, 1, 9)
     shapelets = [[1., 2., 3.], [3., 4., 5.], [5., 6., 6.]]
-    shapelets_info = numpy.array([[1., 1., 4., 4., 5.], [1., 1., 3., 4., 5.], [1., 2., 3., 4., 5.]])
+    shapelets_info = numpy.array(
+        [[1., 1., 4., 4., 5.], [1., 1., 3., 4., 5.], [1., 2., 3., 4., 5.]])
     len_ts = time_series.size(-1)
 
-    layer = PShapeletLayer(shapelets_info=shapelets_info, shapelets=shapelets,len_ts=len_ts, window_size=1).to("cuda:0")
+    layer = PShapeletLayer(shapelets_info=shapelets_info,
+                           shapelets=shapelets, len_ts=len_ts, window_size=1).to("cuda:0")
     time_series = time_series.to(device)
     dists = layer.forward(time_series, ep=1)
     print(dists)

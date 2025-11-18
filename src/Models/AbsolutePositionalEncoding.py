@@ -6,18 +6,17 @@ import pandas as pd
 
 
 class tAPE(nn.Module):
-    r"""Inject some information about the relative or absolute position of the tokens
-        in the sequence. The positional encodings have the same dimension as
-        the embeddings, so that the two can be summed. Here, we use sine and cosine
-        functions of different frequencies.
-    .. math::
-        \text{PosEncoder}(pos, 2i) = sin(pos/10000^(2i/d_model))
-        \text{PosEncoder}(pos, 2i+1) = cos(pos/10000^(2i/d_model))
-        \text{where pos is the word position and i is the embed idx)
+    """
+    Temporal Absolute Positional Encoding with sine and cosine functions, scaled by (d_model / max_len).
+
+    This encoding method injects temporal position information into the input embeddings.
+    It scales the sinusoidal pattern based on embedding size and sequence length.
+
     Args:
-        d_model: the embed dim (required).
-        dropout: the dropout value (default=0.1).
-        max_len: the max. length of the incoming sequence (default=1024).
+        d_model (int): Embedding dimensionality.
+        dropout (float): Dropout rate applied after adding positional encoding. Default is 0.1.
+        max_len (int): Maximum sequence length expected. Default is 1024.
+        scale_factor (float): Factor to scale the positional encodings. Default is 1.0.
     """
 
     def __init__(self, d_model, dropout=0.1, max_len=1024, scale_factor=1.0):
@@ -33,6 +32,15 @@ class tAPE(nn.Module):
         self.register_buffer('pe', pe)  # this stores the variable in the state_dict (used for non-trainable variables)
 
     def forward(self, x):
+        """
+        Add temporal absolute positional encoding to input tensor.
+
+        Args:
+            x (Tensor): Input tensor of shape (sequence_length, batch_size, d_model).
+
+        Returns:
+            Tensor: Positional encoded tensor of same shape as input.
+        """
         r"""Inputs of forward function
         Args:
             x: the sequence fed to the positional encoder model (required).
@@ -45,19 +53,19 @@ class tAPE(nn.Module):
 
 
 class AbsolutePositionalEncoding(nn.Module):
-    r"""Inject some information about the relative or absolute position of the tokens
-        in the sequence. The positional encodings have the same dimension as
-        the embeddings, so that the two can be summed. Here, we use sine and cosine
-        functions of different frequencies.
-    .. math::
-        \text{PosEncoder}(pos, 2i) = sin(pos/10000^(2i/d_model))
-        \text{PosEncoder}(pos, 2i+1) = cos(pos/10000^(2i/d_model))
-        \text{where pos is the word position and i is the embed idx)
-    Args:
-        d_model: the embed dim (required).
-        dropout: the dropout value (default=0.1).
-        max_len: the max. length of the incoming sequence (default=1024).
     """
+    Classic absolute positional encoding using sinusoidal functions (without temporal scaling).
+
+    Uses the original Transformer positional encoding approach with sine on even indices
+    and cosine on odd indices.
+
+    Args:
+        d_model (int): Embedding dimensionality.
+        dropout (float): Dropout rate applied after adding positional encoding. Default is 0.1.
+        max_len (int): Maximum sequence length expected. Default is 1024.
+        scale_factor (float): Factor to scale the positional encodings. Default is 1.0.
+    """
+
 
     def __init__(self, d_model, dropout=0.1, max_len=1024, scale_factor=1.0):
         super(AbsolutePositionalEncoding, self).__init__()
@@ -72,12 +80,14 @@ class AbsolutePositionalEncoding(nn.Module):
         self.register_buffer('pe', pe)  # this stores the variable in the state_dict (used for non-trainable variables)
 
     def forward(self, x):
-        r"""Inputs of forward function
+        """
+        Add absolute positional encoding to input tensor.
+
         Args:
-            x: the sequence fed to the positional encoder model (required).
-        Shape:
-            x: [sequence length, batch size, embed dim]
-            output: [sequence length, batch size, embed dim]
+            x (Tensor): Input tensor of shape (sequence_length, batch_size, d_model).
+
+        Returns:
+            Tensor: Positional encoded tensor of same shape as input.
         """
         x = x + self.pe
         return self.dropout(x)

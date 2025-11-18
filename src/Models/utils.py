@@ -23,7 +23,16 @@ logger = logging.getLogger(__name__)
 
 
 def timer(func):
-    """Print the runtime of the decorated function"""
+    """
+    Decorator that measures and prints the execution time of the wrapped function.
+
+    Args:
+        func (callable): Function to be wrapped and timed.
+
+    Returns:
+        callable: Wrapped function that prints runtime upon execution.
+    """
+
     @functools.wraps(func)
     def wrapper_timer(*args, **kwargs):
         start_time = time.perf_counter()    # 1
@@ -36,6 +45,15 @@ def timer(func):
 
 
 def save_model(path, epoch, model, optimizer=None):
+    """
+    Saves model parameters (and optionally optimizer state) to disk.
+
+    Args:
+        path (str): File path where the checkpoint will be saved.
+        epoch (int): Current epoch number.
+        model (nn.Module): Model whose parameters will be saved.
+        optimizer (Optimizer, optional): Optimizer whose state will also be saved.
+    """
     if isinstance(model, torch.nn.DataParallel):
         state_dict = model.module.state_dict()
     else:
@@ -49,15 +67,27 @@ def save_model(path, epoch, model, optimizer=None):
 
 class SaveBestModel:
     """
-    Class to save the best model while training. If the current epoch's
-    validation loss is less than the previous least less, then save the
-    model state.
+    Utility class for saving the model checkpoint whenever the validation loss improves.
+
+    Attributes:
+        best_valid_loss (float): Lowest observed validation loss.
     """
 
     def __init__(self, best_valid_loss=float('inf')):
         self.best_valid_loss = best_valid_loss
 
     def __call__(self, current_valid_loss, epoch, model, optimizer, criterion, path):
+        """
+        Saves the model if the current validation loss is lower than the best recorded loss.
+
+        Args:
+            current_valid_loss (float): Validation loss of the current epoch.
+            epoch (int): Current epoch index.
+            model (nn.Module): Model to save.
+            optimizer (Optimizer): Optimizer associated with the model.
+            criterion (nn.Module): Loss function (unused, stored for completeness).
+            path (str): File path where the model will be saved.
+        """
 
         if current_valid_loss < self.best_valid_loss:
 
@@ -69,6 +99,23 @@ class SaveBestModel:
 
 def load_model(model, model_path, optimizer=None, resume=False, change_output=False,
                lr=None, lr_step=None, lr_factor=None):
+    """
+    Loads a model checkpoint from disk and optionally resumes optimizer state.
+
+    Args:
+        model (nn.Module): Model into which the checkpoint will be loaded.
+        model_path (str): Path to the saved checkpoint (.pth or .pt).
+        optimizer (Optimizer, optional): Optimizer to restore state for.
+        resume (bool): Whether to resume the optimizer parameters and learning rate schedule.
+        change_output (bool): Whether to drop the output layer weights from the checkpoint.
+        lr (float, optional): Base learning rate used for resuming.
+        lr_step (list, optional): Epoch indices where LR should be decayed.
+        lr_factor (list, optional): Multiplicative factors for LR decay.
+
+    Returns:
+        nn.Module or tuple: Model alone, or (model, optimizer, start_epoch) if optimizer is provided.
+    """
+
     start_epoch = 0
     checkpoint = torch.load(model_path, map_location=lambda storage, loc: storage)
     state_dict = deepcopy(checkpoint['state_dict'])
@@ -101,15 +148,27 @@ def load_model(model, model_path, optimizer=None, resume=False, change_output=Fa
 
 class SaveBestACCModel:
     """
-    Class to save the best model while training. If the current epoch's
-    validation loss is less than the previous least less, then save the
-    model state.
+    Utility class for saving the model checkpoint whenever validation accuracy increases.
+
+    Attributes:
+        best_valid_acc (float): Highest observed validation accuracy.
     """
 
     def __init__(self, best_valid_acc=float('0')):
         self.best_valid_acc = best_valid_acc
 
     def __call__(self, current_valid_acc, epoch, model, optimizer, criterion, path):
+        """
+        Saves the model if the current validation accuracy exceeds the best recorded accuracy.
+
+        Args:
+            current_valid_acc (float): Validation accuracy of the current epoch.
+            epoch (int): Current epoch index.
+            model (nn.Module): Model to save.
+            optimizer (Optimizer): Optimizer associated with the model.
+            criterion (nn.Module): Loss function (unused, stored for completeness).
+            path (str): File path where the model will be saved.
+        """
 
         if current_valid_acc > self.best_valid_acc:
 
@@ -293,8 +352,12 @@ def register_record(filepath, timestamp, experiment_name, best_metrics, final_me
 '''
 
 class Printer(object):
-    """Class for printing output by refreshing the same line in the console, e.g. for indicating progress of a process"""
+    """
+    Utility class for dynamic console printing, useful for live progress updates.
 
+    Args:
+        console (bool): If True, enable dynamic inline printing. Otherwise, fall back to standard print().
+    """
     def __init__(self, console=True):
 
         if console:
@@ -304,13 +367,26 @@ class Printer(object):
 
     @staticmethod
     def dyn_print(data):
-        """Print things to stdout on one line, refreshing it dynamically"""
+        """
+        Prints a single line to stdout, refreshing it in place.
+
+        Args:
+            data (Any): Information to be printed dynamically.
+        """
         sys.stdout.write("\r\x1b[K" + data.__str__())
         sys.stdout.flush()
 
 
 def readable_time(time_difference):
-    """Convert a float measuring time difference in seconds into a tuple of (hours, minutes, seconds)"""
+    """
+    Converts a time duration given in seconds into (hours, minutes, seconds).
+
+    Args:
+        time_difference (float): Time interval in seconds.
+
+    Returns:
+        tuple: (hours, minutes, seconds) as integers.
+    """
 
     hours = time_difference // 3600
     minutes = (time_difference // 60) % 60
