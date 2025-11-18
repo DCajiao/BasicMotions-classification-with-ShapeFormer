@@ -17,6 +17,21 @@ logger = logging.getLogger(__name__)
 
 
 def load_ts(ts_path):
+    """
+    Parses a `.ts` file (UEA/UCR time series format) and extracts multivariate sequences and labels.
+
+    This loader supports datasets where each time series instance may include multiple dimensions.
+    The method detects the @data section and parses dimensional and label information line by line.
+
+    Args:
+        ts_path (str): Path to the `.ts` file to be loaded.
+
+    Returns:
+        tuple:
+            - List[np.ndarray]: List of multivariate time series arrays with shape (C, T) each.
+            - List[str]: Corresponding list of class labels for each instance.
+    """
+
     X_list = []
     y_list = []
     in_data = False
@@ -50,6 +65,31 @@ def load_ts(ts_path):
 
 
 def load_model_exact(config_path, ckpt_path, shapelet_pkl, device, X_tensor=None):
+    """
+    Reconstructs a ShapeFormer model and loads weights from checkpoint, using shapelet definitions.
+
+    This function:
+    1. Loads the model configuration.
+    2. Infers time series shape from `X_tensor`.
+    3. Loads pre-computed shapelets from pickle.
+    4. Scales information gain scores using softmax.
+    5. Inserts shapelets and meta-info into model config.
+    6. Rebuilds the model and loads only matching parameters from checkpoint.
+
+    Args:
+        config_path (str): Path to the JSON configuration file.
+        ckpt_path (str): Path to the PyTorch checkpoint file.
+        shapelet_pkl (str): Path to the pickled shapelet candidates.
+        device (str): Torch device to map the model to (e.g., 'cpu' or 'cuda').
+        X_tensor (torch.Tensor, optional): Input tensor with shape (N, C, T) for shape inference.
+
+    Returns:
+        torch.nn.Module: ShapeFormer model with weights loaded and shapelet info injected.
+
+    Raises:
+        ValueError: If `X_tensor` is not provided to infer input dimensions.
+    """
+
     logger.info("Rebuilding ShapeFormer")
 
     # Load configuration
