@@ -19,9 +19,25 @@ NEG_METRICS = {'loss'}  # metrics for which "better" is less
 
 
 class BaseTrainer(object):
+    """
+    Base class for training loops. This class provides common structure and interface
+    for supervised and unsupervised training workflows.
+
+    Attributes:
+        model (torch.nn.Module): The model to be trained.
+        dataloader (DataLoader): DataLoader providing training or evaluation batches.
+        device (torch.device): Device used for training (CPU or CUDA).
+        loss_module (callable): Loss function to be optimized.
+        optimizer (torch.optim.Optimizer, optional): Optimizer used to update model weights.
+        l2_reg (float, optional): Optional L2 regularization factor.
+        print_interval (int): Interval (in batches) for printing training progress.
+        console (bool): Whether to print output to console.
+        print_conf_mat (bool): Whether to print the confusion matrix during evaluation.
+        epoch_metrics (OrderedDict): Dictionary to store metrics per epoch.
+    """
 
     def __init__(self, model, dataloader, device, loss_module, optimizer=None, l2_reg=None, print_interval=10,
-                 console=True, print_conf_mat =False):
+                 console=True, print_conf_mat=False):
 
         self.model = model
         self.dataloader = dataloader
@@ -41,6 +57,14 @@ class BaseTrainer(object):
         raise NotImplementedError('Please override in child class')
 
     def print_callback(self, i_batch, metrics, prefix=''):
+        """
+        Prints formatted metric updates during training or evaluation.
+
+        Args:
+            i_batch (int): Current batch index.
+            metrics (dict): Dictionary of metric names and their values.
+            prefix (str): Optional string prefix for logging context.
+        """
 
         total_batches = len(self.dataloader)
 
@@ -54,11 +78,32 @@ class BaseTrainer(object):
         dyn_string = prefix + dyn_string
         self.printer.print(dyn_string)
 
+
 def get_lr(optimizer):
+    """
+    Retrieves the current learning rate from the optimizer.
+
+    Args:
+        optimizer (torch.optim.Optimizer): Optimizer whose learning rate is to be checked.
+
+    Returns:
+        float: Learning rate of the first parameter group.
+    """
     for param_group in optimizer.param_groups:
         return param_group['lr']
 
+
 class SupervisedTrainer(BaseTrainer):
+    """
+    Trainer class for supervised learning tasks (classification or regression).
+
+    Extends `BaseTrainer` and implements the `train_epoch` and `evaluate` methods for
+    training and validating supervised models. Handles loss calculation, gradient updates,
+    optional L2 regularization, and metrics aggregation.
+
+    Automatically configures an `Analyzer` to compute classification metrics
+    (e.g., accuracy, precision) and confusion matrix if enabled.
+    """
 
     def __init__(self, *args, **kwargs):
 
@@ -73,6 +118,20 @@ class SupervisedTrainer(BaseTrainer):
             self.analyzer = analysis.Analyzer(print_conf_mat=True)
 
     def train_epoch(self, epoch_num=None):
+        """
+        Trains the model for a single epoch using the provided DataLoader.
+
+        Performs forward pass, loss calculation, gradient backpropagation, gradient clipping,
+        and optimizer step for each batch. Also accumulates total epoch loss.
+
+        Args:
+            epoch_num (int, optional): Current epoch number.
+
+        Returns:
+            dict: Dictionary containing aggregate training metrics for the epoch, including:
+                - 'epoch': The current epoch number
+                - 'loss': Average loss per sample
+        """
 
         self.model = self.model.train()
 
@@ -87,9 +146,11 @@ class SupervisedTrainer(BaseTrainer):
             predictions = self.model(X.to(self.device), epoch_num)
             # print(predictions)
 
-            loss = self.loss_module(predictions, targets)  # (batch_size,) loss for each sample in the batch
+            # (batch_size,) loss for each sample in the batch
+            loss = self.loss_module(predictions, targets)
             batch_loss = torch.sum(loss)
-            mean_loss = batch_loss / len(loss)  # mean loss (over samples) used for optimization
+            # mean loss (over samples) used for optimization
+            mean_loss = batch_loss / len(loss)
 
             if self.l2_reg:
                 total_loss = mean_loss + self.l2_reg * l2_reg_loss(self.model)
@@ -101,7 +162,8 @@ class SupervisedTrainer(BaseTrainer):
             total_loss.backward()
 
             # torch.nn.utils.clip_grad_value_(self.model.parameters(), clip_value=1.0)
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=4.0)
+            torch.nn.utils.clip_grad_norm_(
+                self.model.parameters(), max_norm=4.0)
             self.optimizer.step()
 
             '''
@@ -114,7 +176,8 @@ class SupervisedTrainer(BaseTrainer):
                 total_samples += len(loss)
                 epoch_loss += batch_loss.item()  # add total loss of batch
 
-        epoch_loss = epoch_loss / total_samples  # average loss per sample for whole epoch
+        # average loss per sample for whole epoch
+        epoch_loss = epoch_loss / total_samples
         self.epoch_metrics['epoch'] = epoch_num
         self.epoch_metrics['loss'] = epoch_loss
         # if epoch_num % 20 == 0 and epoch_num > 1:
@@ -127,18 +190,35 @@ class SupervisedTrainer(BaseTrainer):
         return self.epoch_metrics
 
     def evaluate(self, epoch_num=None, keep_all=True):
+        """
+        Evaluates the model on a validation or test set for one full epoch.
+
+        Performs forward pass, computes loss and prediction metrics,
+        and returns performance results including accuracy and precision.
+
+        Args:
+            epoch_num (int, optional): Current epoch number.
+            keep_all (bool): If True, stores all predictions for downstream analysis.
+
+        Returns:
+            tuple:
+                - dict: Aggregate metrics (loss, accuracy, precision) for the epoch.
+                - dict: Detailed classification report from `Analyzer`.
+        """
 
         self.model = self.model.eval()
 
         epoch_loss = 0  # total loss of epoch
         total_samples = 0  # total samples in epoch
 
-        per_batch = {'targets': [], 'predictions': [], 'metrics': [], 'IDs': []}
+        per_batch = {'targets': [], 'predictions': [],
+                     'metrics': [], 'IDs': []}
         for i, batch in enumerate(self.dataloader):
             X, targets, IDs = batch
             targets = targets.to(self.device)
             predictions = self.model(X.to(self.device), 0)
-            loss = self.loss_module(predictions, targets)  # (batch_size,) loss for each sample in the batch
+            # (batch_size,) loss for each sample in the batch
+            loss = self.loss_module(predictions, targets)
             batch_loss = torch.sum(loss).cpu().item()
             mean_loss = batch_loss / len(loss)  # mean loss (over samples)
 
@@ -150,27 +230,35 @@ class SupervisedTrainer(BaseTrainer):
             per_batch['IDs'].append(IDs)
 
             metrics = {"loss": mean_loss}
-            #if i % self.print_interval == 0:
-                #ending = "" if epoch_num is None else 'Epoch {} '.format(epoch_num)
-                #self.print_callback(i, metrics, prefix='Evaluating ' + ending)
+            # if i % self.print_interval == 0:
+            # ending = "" if epoch_num is None else 'Epoch {} '.format(epoch_num)
+            # self.print_callback(i, metrics, prefix='Evaluating ' + ending)
 
             total_samples += len(loss)
             epoch_loss += batch_loss  # add total loss of batch
 
-        epoch_loss = epoch_loss / total_samples  # average loss per element for whole epoch
+        # average loss per element for whole epoch
+        epoch_loss = epoch_loss / total_samples
         self.epoch_metrics['epoch'] = epoch_num
         self.epoch_metrics['loss'] = epoch_loss
 
-        predictions = torch.from_numpy(np.concatenate(per_batch['predictions'], axis=0))
-        probs = torch.nn.functional.softmax(predictions,dim=1)  # (total_samples, num_classes) est. prob. for each class and sample
-        predictions = torch.argmax(probs, dim=1).cpu().numpy()  # (total_samples,) int class index for each sample
+        predictions = torch.from_numpy(
+            np.concatenate(per_batch['predictions'], axis=0))
+        # (total_samples, num_classes) est. prob. for each class and sample
+        probs = torch.nn.functional.softmax(predictions, dim=1)
+        # (total_samples,) int class index for each sample
+        predictions = torch.argmax(probs, dim=1).cpu().numpy()
         probs = probs.cpu().numpy()
         targets = np.concatenate(per_batch['targets'], axis=0).flatten()
-        class_names = np.arange(probs.shape[1])  # TODO: temporary until I decide how to pass class names
-        metrics_dict = self.analyzer.analyze_classification(predictions, targets, class_names)
+        # TODO: temporary until I decide how to pass class names
+        class_names = np.arange(probs.shape[1])
+        metrics_dict = self.analyzer.analyze_classification(
+            predictions, targets, class_names)
 
-        self.epoch_metrics['accuracy'] = metrics_dict['total_accuracy']  # same as average recall over all classes
-        self.epoch_metrics['precision'] = metrics_dict['prec_avg']  # average precision over all classes
+        # same as average recall over all classes
+        self.epoch_metrics['accuracy'] = metrics_dict['total_accuracy']
+        # average precision over all classes
+        self.epoch_metrics['precision'] = metrics_dict['prec_avg']
 
         '''
         if self.model.num_classes == 2:
@@ -184,24 +272,43 @@ class SupervisedTrainer(BaseTrainer):
 
 
 def validate(val_evaluator, tensorboard_writer, config, best_metrics, best_value, epoch):
-    """Run an evaluation on the validation set while logging metrics, and handle outcome"""
+    """
+    Evaluates the model on the validation set and tracks best-performing metrics.
 
-    #logger.info("Evaluating on validation set ...")
-    #eval_start_time = time.time()
+    If the validation metric improves based on the configured `key_metric`,
+    the best model is saved.
+
+    Args:
+        val_evaluator (BaseTrainer): Evaluator with loaded validation data.
+        tensorboard_writer (SummaryWriter): Logger for visualizing metrics.
+        config (dict): Configuration dictionary.
+        best_metrics (dict): Best metrics recorded so far.
+        best_value (float): Current best value for key metric.
+        epoch (int): Current epoch number.
+
+    Returns:
+        tuple:
+            - dict: Aggregated validation metrics for current epoch.
+            - dict: Updated best metrics if improvement occurred.
+            - float: Updated best metric value.
+    """
+
+    # logger.info("Evaluating on validation set ...")
+    # eval_start_time = time.time()
     with torch.no_grad():
         aggr_metrics, ConfMat = val_evaluator.evaluate(epoch, keep_all=True)
-    #eval_runtime = time.time() - eval_start_time
-    #logger.info("Validation runtime: {} hours, {} minutes, {} seconds\n".format(*utils.readable_time(eval_runtime)))
+    # eval_runtime = time.time() - eval_start_time
+    # logger.info("Validation runtime: {} hours, {} minutes, {} seconds\n".format(*utils.readable_time(eval_runtime)))
 
-    #global val_times
+    # global val_times
    # val_times["total_time"] += eval_runtime
-    #val_times["count"] += 1
-    #avg_val_time = val_times["total_time"] / val_times["count"]
-    #avg_val_batch_time = avg_val_time / len(val_evaluator.dataloader)
-    #avg_val_sample_time = avg_val_time / len(val_evaluator.dataloader.dataset)
-    #logger.info("Avg val. time: {} hours, {} minutes, {} seconds".format(*utils.readable_time(avg_val_time)))
-    #logger.info("Avg batch val. time: {} seconds".format(avg_val_batch_time))
-    #logger.info("Avg sample val. time: {} seconds".format(avg_val_sample_time))
+    # val_times["count"] += 1
+    # avg_val_time = val_times["total_time"] / val_times["count"]
+    # avg_val_batch_time = avg_val_time / len(val_evaluator.dataloader)
+    # avg_val_sample_time = avg_val_time / len(val_evaluator.dataloader.dataset)
+    # logger.info("Avg val. time: {} hours, {} minutes, {} seconds".format(*utils.readable_time(avg_val_time)))
+    # logger.info("Avg batch val. time: {} seconds".format(avg_val_batch_time))
+    # logger.info("Avg sample val. time: {} seconds".format(avg_val_sample_time))
 
     # print()
     # print_str = '\nVal: '
@@ -216,32 +323,52 @@ def validate(val_evaluator, tensorboard_writer, config, best_metrics, best_value
         condition = (aggr_metrics[config['key_metric']] > best_value)
     if condition:
         best_value = aggr_metrics[config['key_metric']]
-        utils.save_model(os.path.join(config['save_dir'], 'model_best.pth'), epoch, val_evaluator.model)
+        utils.save_model(os.path.join(
+            config['save_dir'], 'model_best.pth'), epoch, val_evaluator.model)
         best_metrics = aggr_metrics.copy()
 
-        #pred_filepath = os.path.join(config['pred_dir'], 'best_predictions')
+        # pred_filepath = os.path.join(config['pred_dir'], 'best_predictions')
         # np.savez(pred_filepath, **per_batch)
 
     return aggr_metrics, best_metrics, best_value
 
 
 def train_runner(config, model, trainer, val_evaluator, path):
+    """
+    Runs the full training process across all epochs.
+
+    Handles training, validation, learning rate scheduling, metric logging,
+    and saving best-performing models based on validation accuracy.
+
+    Args:
+        config (dict): Configuration dictionary containing model, optimizer, etc.
+        model (torch.nn.Module): The model to be trained.
+        trainer (BaseTrainer): Trainer object for supervised training.
+        val_evaluator (BaseTrainer): Evaluator object for validation evaluation.
+        path (str): Directory path for saving checkpoints and logs.
+
+    Returns:
+        None
+    """
     epochs = config['epochs']
     optimizer = config['optimizer']
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs, eta_min=1e-3)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, epochs, eta_min=1e-3)
     loss_module = config['loss_module']
     start_epoch = 0
     total_start_time = time.time()
     tensorboard_writer = SummaryWriter('summary')
     best_value = 1e16
-    metrics = []  # (for validation) list of lists: for each epoch, stores metrics like loss, ...
+    # (for validation) list of lists: for each epoch, stores metrics like loss, ...
+    metrics = []
     best_metrics = {}
     save_best_model = utils.SaveBestModel()
     save_best_acc_model = utils.SaveBestACCModel()
 
-    for epoch in tqdm(range(start_epoch, epochs), desc='Epoch',mininterval=0.01):
+    for epoch in tqdm(range(start_epoch, epochs), desc='Epoch', mininterval=0.01):
         training_time = time.time()
-        aggr_metrics_train = trainer.train_epoch(epoch)  # dictionary of aggregate epoch metrics
+        # dictionary of aggregate epoch metrics
+        aggr_metrics_train = trainer.train_epoch(epoch)
         scheduler.step()
         # logger.info("training time: %s" % (time.time() - training_time))
         # print("training time: %s" % (time.time() - training_time))
@@ -252,7 +379,8 @@ def train_runner(config, model, trainer, val_evaluator, path):
         # print("testing time: %s" % (time.time() - testing_time))
         # logger.info("testing time: %s" % (time.time() - testing_time))
         # save_best_model(aggr_metrics_val['loss'], epoch, model, optimizer, loss_module, path)
-        save_best_acc_model(aggr_metrics_val['accuracy'], epoch, model, optimizer, loss_module, path)
+        save_best_acc_model(
+            aggr_metrics_val['accuracy'], epoch, model, optimizer, loss_module, path)
 
         metrics_names, metrics_values = zip(*aggr_metrics_val.items())
         metrics.append(list(metrics_values))
@@ -268,5 +396,6 @@ def train_runner(config, model, trainer, val_evaluator, path):
                 print_str += '{}: {:4f} | '.format(k, v)
         logger.info(print_str)
     total_runtime = time.time() - total_start_time
-    logger.info("Train Time: {} hours, {} minutes, {} seconds\n".format(*utils.readable_time(total_runtime)))
+    logger.info("Train Time: {} hours, {} minutes, {} seconds\n".format(
+        *utils.readable_time(total_runtime)))
     return
