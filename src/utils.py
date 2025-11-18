@@ -86,7 +86,7 @@ def Data_Verifier(config):
     directories = [name for name in os.listdir(config['data_path']) if os.path.isdir(os.path.join(config['data_path'], name))]
 
     if directories:
-        print(f"The {config['data_path'].split('/')[-2]} data is already existed")
+        logger.info(f"The {config['data_path'].split('/')[-2]} data is already existed")
     else:
         if config['data_path'].split('/')[1] == 'UEA':
             file_url = 'http://www.timeseriesclassification.com/Downloads/Archives/Multivariate2018_ts.zip'
@@ -119,7 +119,7 @@ def Downloader(file_url, problem):
                 progress = (downloaded_size / total_size) * 100
 
                 # Print the progress message
-                print(f' Download in progress: {progress:.2f}%')
+                logger.info(f' Download in progress: {progress:.2f}%')
 
         # Extract the contents of the zip file
         with zipfile.ZipFile(file_path, 'r') as zip_ref:
@@ -128,9 +128,10 @@ def Downloader(file_url, problem):
         # Remove the downloaded zip file
         os.remove(file_path)
 
-        print(f'{problem} Datasets downloaded and extracted successfully.')
+        logger.info(f'{problem} Datasets downloaded and extracted successfully.')
+        
     else:
-        print(f'Failed to download the {problem} please update the file_url')
+        logger.error(f'Failed to download the {problem} please update the file_url')
     return
 
 
